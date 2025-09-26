@@ -1,0 +1,38 @@
+/* ./src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body.login-page {
+  background: url('@/assets/login-background.png') no-repeat center center fixed; 
+  -webkit-background-size: cover;
+  -moz-background-size: cover;
+  -o-background-size: cover;
+  background-size: cover;
+}
+:root {
+  --primary-50: 236 245 253;
+  --primary-100: 209 229 250;
+  --primary-200: 167 208 243;
+  --primary-300: 110 183 231;
+  --primary-400: 52 153 211;
+  --primary-500: 16 129 185;
+  --primary-600: 5 105 150;
+  --primary-700: 4 87 120;
+  --primary-800: 6 70 95;
+  --primary-900: 4 56 78;
+  --primary-950: 2 34 44;
+  --surface-0: 255 255 255;
+  --surface-50: 248 250 252;
+  --surface-100: 241 245 249;
+  --surface-200: 226 232 240;
+  --surface-300: 203 213 225;
+  --surface-400: 148 163 184;
+  --surface-500: 100 116 139;
+  --surface-600: 71 85 105;
+  --surface-700: 45 55 72;
+  --surface-800: 30 41 59;
+  --surface-900: 15 23 42;
+  --surface-950: 3 6 23;
+}

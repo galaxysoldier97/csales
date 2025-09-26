@@ -1,0 +1,58 @@
+stages:
+  - build
+  - package
+
+# Variables globales
+variables:
+  NODE_OPTIONS: "--max-old-space-size=4096"  # Evitar problemas de memoria en la compilación
+
+# Configuración default
+default:
+  tags:
+    - server-231.159  # Usar específicamente este runner (192.168.231.159)
+
+# Job para compilar el proyecto Vue
+build:
+  stage: build
+  image: node:20-alpine
+  tags:
+    - server-231.159  # Runner específico en el servidor 192.168.231.159
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - .npm/
+  variables:
+    NODE_ENV: production
+  script:
+    - node -v
+    - echo "Usando Node.js $(node -v) para la compilación en servidor 192.168.231.159"
+    - npm ci --cache .npm --prefer-offline
+    - echo "Compilando para PRODUCCIÓN usando .env.production"
+    - npm run build -- --mode production
+    - echo "Verificando compilación de producción..."
+    - ls -la dist/
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
+# Job para crear el archivo ZIP
+package:
+  stage: package
+  image: node:20-alpine
+  tags:
+    - server-231.159  # Runner específico en el servidor 192.168.231.159
+  needs:
+    - build
+  script:
+    - apk add --no-cache zip
+    - echo "Creando archivo ZIP de la compilación de producción en servidor 192.168.231.159..."
+    - zip -r csales-frontend-production.zip dist/
+    - echo "Archivo ZIP creado correctamente:"
+    - ls -la csales-frontend-production.zip
+  artifacts:
+    paths:
+      - csales-frontend-production.zip
+    expire_in: 1 week
+    name: "csales-frontend-${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}"
