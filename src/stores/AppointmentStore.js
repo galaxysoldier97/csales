@@ -1,20 +1,15 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
 
-const API_PREFIX = '/api/appointment';
-const API_BASE = import.meta.env?.VITE_APP_API_URL || ''; // opcional
+const API_BASE = import.meta.env?.VITE_APP_API_URL ?? '/api/appointment';
 
-// axios con baseURL opcional (si VITE_APP_API_URL existe, se prefiere)
 const http = axios.create({
   baseURL: API_BASE,
   withCredentials: false,
 });
 
-// Interceptor (similar a tu proyecto anterior) por si luego necesitas token/headers
 http.interceptors.request.use(
   (config) => {
-    // const token = localStorage.getItem('user_key');
-    // if (token) config.headers.Authorization = `Bearer ${token}`;
     config.headers['Access-Control-Allow-Origin'] = '*';
     config.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, PATCH, DELETE';
     config.headers['Access-Control-Allow-Credentials'] = 'false';
@@ -23,122 +18,236 @@ http.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+const normalizeRecords = (records) => {
+  if (!records) return [];
+  return Array.isArray(records) ? records : [records];
+};
+
 export const useAppointmentStore = defineStore('appointment', {
   state: () => ({
+    entryDates: null,
+    records: [],
+    sourceSystem: null,
+    taskId: null,
+    ProcesId: null,
+    LoadingTemplate: true,
+    LoadingTemplateProccess: false,
+    hasRecords: null,
+    canUnify: null,
     appointments: [],
     tasks: [],
-    availability: null,
+    dueDateDays: null,
     error: null,
+    isError: false,
+    saveError: null,
+    errorMessage: null,
   }),
   actions: {
-    // ====== CHECK AVAILABILITY ====== 1ra llamada del onMounted
-     async checkAvailability(id, source) {
+    setRouteContext({ processId, ProcesId, sourceSystem, taskId }) {
+      const resolvedProcess = processId ?? ProcesId;
+      this.ProcesId = resolvedProcess ?? this.ProcesId;
+      this.sourceSystem = sourceSystem ?? this.sourceSystem;
+      this.taskId = taskId ?? this.taskId;
+    },
+
+    async fetchEvents({ processId, sourceSystem, taskId } = {}) {
+      if (processId || sourceSystem || taskId) {
+        this.setRouteContext({ processId, sourceSystem, taskId });
+      }
+
+      if (!this.ProcesId || !this.sourceSystem) {
+        this.isError = true;
+        this.errorMessage = `Error: ${!this.ProcesId ? 'Falto el parametro ProcessID.' : ''} ${!this.sourceSystem ? 'Falto el parametro SourceSystem.' : ''}`.trim();
+      this.LoadingTemplate = false;
+        return;
+      }
+
+      this.LoadingTemplate = true;
+      this.isError = false;
+      this.errorMessage = null;
+      this.saveError = null;
+
       try {
-        const url = `${API_PREFIX}/${id}/${source}/check-availability`;
-        const { data: resp } = await http.post(url);
-        this.availability = resp;
-        this.error = null;
+        const { data } = await http.post(`/${this.ProcesId}/${this.sourceSystem}/check-availability`);
+
+        this.entryDates = data ?? null;
+        this.canUnify = data?.Unificacion ?? false;
+        this.records = normalizeRecords(data?.record);
+        this.hasRecords = this.records.length > 0;
+        this.LoadingTemplate = false;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
-        this.availability = null;
+        this.LoadingTemplate = false;
+        this.entryDates = null;
+        this.records = [];
+        this.hasRecords = false;
+        this.isError = true;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        this.errorMessage = this.error;
+        throw error;
       }
     },
 
-    // ====== CHECK AVAILABILITY GENERAL (solo fecha desde el input) ======
-    async timeInterval(data) {
+    async timeInterval(payload) {
       try {
-        const url = `${API_PREFIX}/check-availability`;
-        const { data: resp } = await http.post(url, data);
-        this.availability = resp;
-        this.error = null;
+        const { data } = await http.post('/check-availability', payload);
+        this.entryDates = data ?? null;
+        this.records = normalizeRecords(data?.record);
+        this.hasRecords = this.records.length > 0;
+        this.canUnify = data?.Unificacion ?? this.canUnify;
+        this.isError = false;
+        this.errorMessage = null;
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
-        this.availability = null;
+        this.entryDates = null;
+        this.records = [];
+        this.hasRecords = false;
+        this.isError = true;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        this.errorMessage = this.error;
+        throw error;
       }
     },
 
-    // ====== TASKS ======
-    async getTask(id, source) {
+    async checkAvailabilityDigital(payload) {
       try {
-        const url = `${API_PREFIX}/${id}/${source}/get-task`;
-        const { data } = await http.get(url);
-        this.tasks = data;
-        this.error = null;
+        const { data } = await http.post('/check-availability-digital', payload);
+        this.entryDates = data ?? null;
+        this.records = normalizeRecords(data?.record);
+        this.hasRecords = this.records.length > 0;
+        this.canUnify = data?.Unificacion ?? this.canUnify;
+        this.isError = false;
+        this.errorMessage = null;
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
-        this.tasks = [];
+        this.entryDates = null;
+        this.records = [];
+        this.hasRecords = false;
+        this.isError = true;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        this.errorMessage = this.error;
+        throw error;
       }
     },
 
-    async getTaskByAccountId(accountId) {
+    async newAppointment(payload) {
       try {
-        const { data } = await http.get(`${API_PREFIX}/getTaskByAccountId`, { params: { accountId } });
-        this.tasks = data;
-        this.error = null;
-      } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
-        this.tasks = [];
-      }
-    },
-
-    async getTaskByCustomerId(customerId) {
-      try {
-        const { data } = await http.get(`${API_PREFIX}/getTaskByCustomerId`, { params: { customerId } });
-        this.tasks = data;
-        this.error = null;
-      } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
-        this.tasks = [];
-      }
-    },
-
-    // ====== APPOINTMENTS ======
-    async setAppointment(payload) {
-      try {
-        const { data } = await http.post(`${API_PREFIX}/setAppointments`, payload);
+        this.LoadingTemplateProccess = true;
+        const { data } = await http.post('/NewsetAppointments', payload);
         this.appointments.push(data);
-        this.error = null;
+        this.LoadingTemplateProccess = false;
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
+        this.LoadingTemplateProccess = false;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        throw error;
       }
     },
 
-    async setAppointmentVIP(payload) {
+    async getTaskStatus(payload) {
       try {
-        const { data } = await http.post(`${API_PREFIX}/setAppointmentsVIP`, payload);
-        this.appointments.push(data);
-        this.error = null;
+        this.LoadingTemplateProccess = true;
+        const { data } = await http.post('/new-get-task', payload);
+        this.LoadingTemplateProccess = false;
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
+        this.LoadingTemplateProccess = false;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        throw error;
       }
     },
 
     async updateStatus(payload) {
       try {
-        await http.post(`${API_PREFIX}/update-status`, payload);
-        this.error = null;
+        this.LoadingTemplate = true;
+        const { data } = await http.post('/update-status', payload);
+        this.LoadingTemplate = false;
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
+        this.LoadingTemplate = false;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        throw error;
       }
     },
 
-    async confirmAppointment_Digital(payload) {
+    async dispatchStatus(payload) {
       try {
-        await http.post(`${API_PREFIX}/confirmAppointments`, payload);
-        this.error = null;
+        this.LoadingTemplate = true;
+        const { data } = await http.post('/update-status', payload);
+        this.LoadingTemplate = false;
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
+        this.LoadingTemplate = false;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        throw error;
       }
     },
 
-    async timeInterval_Digital(payload) {
+    async confirmAppointmentDigital(payload) {
       try {
-        const { data } = await http.post(`${API_PREFIX}/check-availability-digital`, payload);
-        this.availability = data;
-        this.error = null;
+        const { data } = await http.post('/confirmAppointments', payload);
+        return data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'An error occurred';
-        this.availability = null;
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        throw error;
+      }
+    },
+
+    async searchDueDate() {
+      try {
+        const { data } = await http.post('/dueDate');
+        this.dueDateDays = data?.records?.dueDate ?? null;
+        return this.dueDateDays;
+      } catch (error) {
+        this.saveError = error.response ?? null;
+        this.error = error.response?.data?.message || error.message;
+        throw error;
+      }
+    },
+
+    async getTask(id, source) {
+      try {
+        const { data } = await http.get(`/${id}/${source}/get-task`);
+        this.tasks = data;
+        this.error = null;
+        return data;
+      } catch (error) {
+        this.error = error.response?.data?.message || error.message;
+        this.tasks = [];
+        throw error;
+      }
+    },
+
+    async getTaskByAccountId(accountId) {
+      try {
+        const { data } = await http.get('/getTaskByAccountId', { params: { accountId } });
+        this.tasks = data;
+        this.error = null;
+        return data;
+      } catch (error) {
+        this.error = error.response?.data?.message || error.message;
+        this.tasks = [];
+        throw error;
+      }
+    },
+
+    async getTaskByCustomerId(customerId) {
+      try {
+        const { data } = await http.get('/getTaskByCustomerId', { params: { customerId } });
+        this.tasks = data;
+        this.error = null;
+        return data;
+      } catch (error) {
+        this.error = error.response?.data?.message || error.message;
+        this.tasks = [];
+        throw error;
       }
     },
   },
